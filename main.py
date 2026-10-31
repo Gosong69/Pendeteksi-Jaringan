@@ -2,8 +2,7 @@
 import subprocess
 import platform
 from datetime import datetime
-import mysql.connector
-
+from info_network import get_ssid, get_gateway
 
 
 # ==================================
@@ -14,17 +13,21 @@ print("=" * 40)
 print("       HOME NETWORK MONITORING")
 print("=" * 40)
 
-# Informasi perangkat jaringan
-devices = [
-    {
-        "name": "TOTOLINK N300RT",
-        "ip": "192.168.1.1"
-    },
-    {
-        "name": "TP-Link TL-WR820N",
-        "ip": "192.168.1.2"
-    }
+ssid = get_ssid() or "kabel/LAN"
+gateway = get_gateway()
+
+print("Wifi    :", ssid)
+print("Gateway :", gateway)
+
+PERANGKAT_RUMAH = [
+    {"name": "TOTOLINK N300RT", "ip": "192.168.1.1"},
+    {"name": "TP-Link TL-WR820N", "ip": "192.168.1.2"},
 ]
+
+if ssid == "NAMA_WIFI_RUMAH":
+    devices = PERANGKAT_RUMAH
+else:
+    devices = [{"name": f"Router ({ssid})", "ip": gateway}] if gateway else []
 
 # Menentukan perintah ping berdasarkan OS
 if platform.system() == "Windows":

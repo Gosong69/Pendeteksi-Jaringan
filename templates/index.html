@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🌐 Monitor Jaringan</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <header>
+    <h1>🌐 Monitor Jaringan Rumah</h1>
+    <p>Pantau perangkat yang terhubung ke WiFi Anda secara real-time</p>
+  </header>
+
+  <div class="page-wrapper">
+
+    <!-- Stats row -->
+    <div class="stats">
+      <div class="stat-box">
+        <div class="label">Perangkat Ditemukan</div>
+        <div class="value" id="stat-found">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Jaringan</div>
+        <div class="value small" id="stat-network">—</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Scan Terakhir</div>
+        <div class="value small" id="stat-time">—</div>
+      </div>
+    </div>
+
+    <!-- Card Kontrol -->
+    <div class="card">
+      <div class="card-title">⚙️ Panel Kontrol</div>
+      <div class="controls">
+        <button class="btn-scan" id="btn-scan">🔍 Mulai Scan Jaringan</button>
+        <button class="btn-secondary" id="btn-history">📋 Lihat Riwayat</button>
+        <button class="btn-secondary" id="btn-delete-old">🗑️ Hapus Data &gt;3 Bulan</button>
+      </div>
+      <div class="status-bar">
+        <span id="status-text"></span>
+      </div>
+    </div>
+
+    <!-- Card Hasil Scan Real-Time -->
+    <div class="card">
+      <div class="card-title">📡 Hasil Scan Real-Time</div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>IP Address</th>
+            <th>Nama/MAC</th>
+            <th>Waktu Terdeteksi</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="scan-body">
+          <tr><td colspan="5" class="empty-msg">Belum ada data — klik "Mulai Scan Jaringan"</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Card Riwayat Semua Perangkat -->
+    <div class="card" id="history-card">
+      <div class="card-title">🗄️ Riwayat Semua Perangkat</div>
+      <p style="font-size:0.85rem; color:#78909c; margin-bottom:12px;">
+        Data tersimpan permanen. Hilang otomatis setelah 3 bulan tidak terdeteksi.
+      </p>
+      <hr class="divider">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>IP Address</th>
+            <th>MAC Address</th>
+            <th>Jaringan/WiFi</th>
+            <th>Pertama Terdeteksi</th>
+            <th>Terakhir Terdeteksi</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="history-body">
+          <tr><td colspan="7" class="empty-msg">Klik 'Lihat Riwayat' untuk memuat data</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- end .page-wrapper -->
+
+  <script>
+    // Helper set status
+    function setStatus(msg, type = 'info') {
+      // type: 'info' | 'ok' | 'err' | 'loading'
+      const el = document.getElementById('status-text');
+      if (type === 'loading') {
+        el.className = 'status-info';
+        el.innerHTML = `<span class="spinner"></span> ${msg}`;
+      } else {
+        el.className = `status-${type === 'ok' ? 'ok' : type === 'err' ? 'err' : 'info'}`;
+        el.textContent = msg;
+      }
+    }
+
+    // Scan jaringan
+    async function startScan() {
+      const btn = document.getElementById('btn-scan');
+      btn.disabled = true;
+      setStatus('Memindai jaringan, harap tunggu...', 'loading');
+      document.getElementById('scan-body').innerHTML = '<tr><td colspan="5" class="empty-msg">⏳ Sedang memindai perangkat...</td></tr>';
+      try {
+        const res = await fetch('/api/scan');
+        const data = await res.json();
+        if (!res.ok) { setStatus('❌ ' + (data.error || 'Gagal scan'), 'err'); return; }
+        document.getElementById('stat-found').textContent = data.devices.length;
+        document.getElementById('stat-network').textContent = data.network || '—';
+        document.getElementById('stat-time').textContent = new Date().toLocaleTimeString('id-ID');
+        const tbody = document.getElementById('scan-body');
+        if (data.devices.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">😕 Tidak ada perangkat ditemukan.</td></tr>';
+        } else {
+          tbody.innerHTML = data.devices.map((d, i) => `
+            <tr>
+              <td>${i+1}</td>
+              <td><strong>${d.ip}</strong></td>
+              <td class="mac-text">${d.mac}</td>
+              <td>${d.last_seen}</td>
+              <td><span class="badge-online">● Online</span></td>
+            </tr>`).join('');
+        }
+        setStatus('✅ Scan selesai! ' + data.devices.length + ' perangkat ditemukan.', 'ok');
+      } catch(err) {
+        setStatus('❌ Error: ' + err.message, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Load riwayat
+    async function loadHistory() {
+      setStatus('Memuat riwayat dari database...', 'loading');
+      document.getElementById('history-body').innerHTML = '<tr><td colspan="7" class="empty-msg">⏳ Memuat...</td></tr>';
+      try {
+        const res = await fetch('/api/devices');
+        const data = await res.json();
+        if (!res.ok) {
+          document.getElementById('history-body').innerHTML = `<tr><td colspan="7" class="empty-msg">❌ ${data.error || 'Gagal memuat'}</td></tr>`;
+          setStatus('❌ Gagal memuat riwayat.', 'err');
+          return;
+        }
+        const tbody = document.getElementById('history-body');
+        if (data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">📭 Belum ada data tersimpan di database.</td></tr>';
+        } else {
+          tbody.innerHTML = data.map((d, i) => `
+            <tr>
+              <td>${i+1}</td>
+              <td><strong>${d.ip_address}</strong></td>
+              <td class="mac-text">${d.mac_address}</td>
+              <td><span class="network-badge">${d.ssid || '—'}</span> <small>${d.network || ''}</small></td>
+              <td>${d.first_seen}</td>
+              <td>${d.last_seen}</td>
+              <td><button class="btn-danger" onclick="deleteDevice('${d.mac_address}', '${d.network || ''}', '${d.ssid || ''}')">🗑️ Hapus</button></td>
+            </tr>`).join('');
+        }
+        setStatus('✅ Riwayat dimuat. ' + data.length + ' perangkat tercatat.', 'ok');
+      } catch(err) {
+        setStatus('❌ Error: ' + err.message, 'err');
+      }
+    }
+
+    // Hapus 1 perangkat
+    async function deleteDevice(mac, network, ssid) {
+      if (!confirm(`Hapus perangkat dengan MAC ${mac}?`)) return;
+      try {
+        const res = await fetch('/api/devices/' + encodeURIComponent(mac) + '?network=' + encodeURIComponent(network) + '&ssid=' + encodeURIComponent(ssid), {method: 'DELETE'});
+        const data = await res.json();
+        if (res.ok) { setStatus('✅ Perangkat berhasil dihapus.', 'ok'); loadHistory(); }
+        else setStatus('❌ ' + (data.error || 'Gagal hapus'), 'err');
+      } catch(err) {
+        setStatus('❌ Error: ' + err.message, 'err');
+      }
+    }
+
+    // Hapus data lebih dari 3 bulan
+    async function deleteOldData() {
+      if (!confirm('Hapus semua perangkat yang tidak terdeteksi lebih dari 3 bulan?')) return;
+      setStatus('Menghapus data lama...', 'loading');
+      try {
+        const res = await fetch('/api/devices/old', {method: 'DELETE'});
+        const data = await res.json();
+        if (res.ok) { setStatus('✅ ' + (data.message || 'Data lama dihapus.'), 'ok'); loadHistory(); }
+        else setStatus('❌ ' + (data.error || 'Gagal hapus'), 'err');
+      } catch(err) {
+        setStatus('❌ Error: ' + err.message, 'err');
+      }
+    }
+
+    // Event listeners
+    document.getElementById('btn-scan').addEventListener('click', startScan);
+    document.getElementById('btn-history').addEventListener('click', loadHistory);
+    document.getElementById('btn-delete-old').addEventListener('click', deleteOldData);
+
+    // Auto-load riwayat saat halaman dibuka
+    loadHistory();
+  </script>
+
+</body>
+</html>
